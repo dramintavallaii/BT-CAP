@@ -48,8 +48,8 @@ BT-CAP --input "C:\path\to\input" --output "C:\path\to\output" --samples 2 --see
 
 - `--input`: Path to the directory containing input data (e.g., T1N, T1C, T2F, T2W, SEG images).
 - `--output`: Path to save augmented output data.
-- `--n-samples`: Number of augmented samples per case (default: 1).
-- `--seed`: Random seed setting for reproducibility.
+- `--samples`: Number of augmented samples per case (default: 1).
+- `--seed`: Random seed setting for reproducibility (optional).
 - `--normalize`: Apply Z-score normalization (optional).
 
 Check available options:
