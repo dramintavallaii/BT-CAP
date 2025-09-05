@@ -69,25 +69,57 @@ def smooth_interface_with_kernel(
     m1 = mask1.astype(bool, copy=False)
     m2 = mask2.astype(bool, copy=False)
     interface = m1 & binary_dilation(m2, iterations=dilate_iter)
-    if not np.any(interface):
-        return volume
-    pad = tuple(k // 2 for k in kernel_size)
-    idx = np.where(interface)
-    z0, z1 = max(int(idx[0].min()) - pad[0] - 1, 0), min(int(idx[0].max()) + pad[0] + 2, volume.shape[0])
-    y0, y1 = max(int(idx[1].min()) - pad[1] - 1, 0), min(int(idx[1].max()) + pad[1] + 2, volume.shape[1])
-    x0, x1 = max(int(idx[2].min()) - pad[2] - 1, 0), min(int(idx[2].max()) + pad[2] + 2, volume.shape[2])
-    v_crop = volume[z0:z1, y0:y1, x0:x1].astype(np.float32, copy=False)
-    i_crop = interface[z0:z1, y0:y1, x0:x1]
-    f_crop = (m1 | m2)[z0:z1, y0:y1, x0:x1].astype(np.float32, copy=False)
-    vol_mean = uniform_filter(v_crop, size=kernel_size, mode="reflect")
-    occ_mean = uniform_filter(f_crop, size=kernel_size, mode="constant")
-    with np.errstate(invalid="ignore", divide="ignore"):
-        local_mean = np.divide(vol_mean, occ_mean, where=occ_mean > 0)
-    out = v_crop.copy()
-    sel = i_crop & (occ_mean > 0)
-    out[sel] = (1.0 - alpha) * v_crop[sel] + alpha * local_mean[sel]
-    volume[z0:z1, y0:y1, x0:x1] = out
+    if np.sum(interface) > 0:
+        smoothed = volume.copy()
+        dz, dy, dx = kernel_size
+        pad_z, pad_y, pad_x = dz // 2, dy // 2, dx // 2
+        padded_volume = np.pad(volume, 
+                                ((pad_z, pad_z), (pad_y, pad_y), (pad_x, pad_x)), 
+                                mode='reflect')
+        foreground_mask = (mask1 | mask2).astype(np.uint8)
+        padded_mask = np.pad(foreground_mask, 
+                             ((pad_z, pad_z), (pad_y, pad_y), (pad_x, pad_x)), 
+                             mode='constant', constant_values=0)
+        interface_idx = np.argwhere(interface)
+        for z, y, x in interface_idx:
+            patch = padded_volume[z : z + dz, y : y + dy, x : x + dx]
+            patch_mask = padded_mask[z : z + dz, y : y + dy, x : x + dx]
+            if np.any(patch_mask):
+                patch_mean = np.mean(patch[patch_mask > 0])
+                smoothed[z, y, x] = (1 - alpha) * volume[z, y, x] + alpha * patch_mean
+        return smoothed
     return volume
+
+# def smooth_interface_with_kernel(
+#     volume: np.ndarray,
+#     mask1: np.ndarray,
+#     mask2: np.ndarray,
+#     dilate_iter: int = 2,
+#     alpha: float = 0.7,
+#     kernel_size: tuple[int, int, int] = (3, 3, 3),
+# ) -> np.ndarray:
+#     m1 = mask1.astype(bool, copy=False)
+#     m2 = mask2.astype(bool, copy=False)
+#     interface = m1 & binary_dilation(m2, iterations=dilate_iter)
+#     if not np.any(interface):
+#         return volume
+#     pad = tuple(k // 2 for k in kernel_size)
+#     idx = np.where(interface)
+#     z0, z1 = max(int(idx[0].min()) - pad[0] - 1, 0), min(int(idx[0].max()) + pad[0] + 2, volume.shape[0])
+#     y0, y1 = max(int(idx[1].min()) - pad[1] - 1, 0), min(int(idx[1].max()) + pad[1] + 2, volume.shape[1])
+#     x0, x1 = max(int(idx[2].min()) - pad[2] - 1, 0), min(int(idx[2].max()) + pad[2] + 2, volume.shape[2])
+#     v_crop = volume[z0:z1, y0:y1, x0:x1].astype(np.float32, copy=False)
+#     i_crop = interface[z0:z1, y0:y1, x0:x1]
+#     f_crop = (m1 | m2)[z0:z1, y0:y1, x0:x1].astype(np.float32, copy=False)
+#     vol_mean = uniform_filter(v_crop, size=kernel_size, mode="reflect")
+#     occ_mean = uniform_filter(f_crop, size=kernel_size, mode="constant")
+#     with np.errstate(invalid="ignore", divide="ignore"):
+#         local_mean = np.divide(vol_mean, occ_mean, where=occ_mean > 0)
+#     out = v_crop.copy()
+#     sel = i_crop & (occ_mean > 0)
+#     out[sel] = (1.0 - alpha) * v_crop[sel] + alpha * local_mean[sel]
+#     volume[z0:z1, y0:y1, x0:x1] = out
+#     return volume
 
 def insert_back_to_original_shape(
     resized_vol: np.ndarray,

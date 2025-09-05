@@ -6,7 +6,6 @@ from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
-from tqdm import tqdm
 
 def extract_sorted_islands(mask: np.ndarray) -> list[np.ndarray]:
     labeled, num_features = label(mask.astype(np.uint8))
@@ -97,8 +96,6 @@ def optimize_island(
     maxiter: int = 80,
     rng: np.random.Generator = None
 ) -> np.ndarray:
-    if rng is None:
-        rng = np.random.default_rng()
     empty_core = (tumor_core.astype(bool) & (~covered_core.astype(bool)))
     bbox = get_bounding_box(tumor_core, [1])
     if bbox is None:
@@ -203,10 +200,11 @@ def fill_enclosed_with_neighbor_mean(intensity_vol: np.ndarray, enclosed_mask: n
 def rearrange_subcomponents_into_core(
     tumor_core_dict: dict[int, tuple[np.ndarray, np.ndarray]],
     tumor_core: np.ndarray,
-    rng: np.random.Generator = None
+    case_name: str,
+    sample_idx: int,
+    queue=None,
+    rng: np.random.Generator = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if rng is None:
-        rng = np.random.default_rng()
     tumor_core = tumor_core.astype(np.uint8, copy=False)
     core_vox = int(tumor_core.sum())
     if core_vox == 0:
@@ -220,7 +218,11 @@ def rearrange_subcomponents_into_core(
             for j_idx, (cnt, split_island) in enumerate(split_large_island(island, threshold)):
                 if cnt < 100:
                     continue
-                tup = (cnt, f"Comp{label_key}-Island{i_idx}-Split{j_idx}", split_island.astype(np.uint8, copy=False), label_key, sub_mods)
+                tup = (cnt,
+                       f"Comp{label_key}-Island{i_idx}-Split{j_idx}",
+                       split_island.astype(np.uint8, copy=False),
+                       label_key,
+                       sub_mods)
                 if label_key == 1:
                     enh_islands.append(tup)
                 elif label_key == 2:
@@ -231,7 +233,10 @@ def rearrange_subcomponents_into_core(
     nonenh_islands.sort(key=lambda x: x[0], reverse=True)
     cyst_islands.sort(key=lambda x: x[0], reverse=True)
     total_islands = len(enh_islands) + len(nonenh_islands) + len(cyst_islands)
+    if queue is not None:
+        queue.put(("progress", case_name, sample_idx, 0, total_islands))
     covered_core = np.zeros_like(tumor_core, dtype=np.uint8)
+    placed = 0
     placed_ETs_vol  = np.zeros((4, *tumor_core.shape), dtype=np.float32)
     placed_NETs_vol = np.zeros((4, *tumor_core.shape), dtype=np.float32)
     placed_CCs_vol  = np.zeros((4, *tumor_core.shape), dtype=np.float32)
@@ -243,7 +248,6 @@ def rearrange_subcomponents_into_core(
         (2, nonenh_islands, "Non-enhancing"),
         (3, cyst_islands, "Cystic"),
     ]
-    pbar = tqdm(total=total_islands, desc="Placing islands", unit="island")
     while any(len(lst) > 0 for _, lst, _ in components):
         candidates = []
         for label_idx, lst, _ in components:
@@ -254,6 +258,10 @@ def rearrange_subcomponents_into_core(
         for _, island_mask, island_id, key_lbl, sub_mods, source_list in candidates:
             params = optimize_island(island_mask, tumor_core, covered_core, rng=rng)
             t_mask, t_mods = transform_island(island_mask, params[:3], params[3:], modalities=sub_mods)
+            placed += 1
+            if queue is not None:
+                queue.put(("island_placement", case_name, sample_idx, placed, total_islands))
+
             if t_mask.any():
                 t_mask = gaussian_filter(t_mask.astype(np.float32), sigma=1.0) > 0.6
                 t_mask = t_mask.astype(np.uint8, copy=False)
@@ -286,11 +294,7 @@ def rearrange_subcomponents_into_core(
                         )
                     placed_CCs_mask[within_core] = 1
                 covered_core[within_core] = 1
-            coverage = covered_core.sum() / float(core_vox)
-            pbar.set_postfix({"Core coverage": f"{coverage:.4f}"})
-            pbar.update(1)
             source_list.pop(0)
-    pbar.close()
     ET_holes  = find_single_enclosed_empty_voxels(placed_ETs_mask)
     NET_holes = find_single_enclosed_empty_voxels(placed_NETs_mask)
     CC_holes  = find_single_enclosed_empty_voxels(placed_CCs_mask)

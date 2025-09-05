@@ -5,8 +5,6 @@ from scipy.ndimage import label, binary_dilation, generate_binary_structure, gau
 from collections import Counter
 
 def inpaint(modalities_, mask_, labels_, original_tumor_core_, threshold=10, sigma=1.0, rng: np.random.Generator = None):
-    if rng is None:
-        rng = np.random.default_rng()
     output_modalities = modalities_.copy()
     output_mask = mask_.copy()
     empty_areas = (mask_ == 0) & original_tumor_core_.astype(bool)

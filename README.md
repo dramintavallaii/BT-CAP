@@ -43,14 +43,16 @@ Ensure you have Python 3.8 or higher installed, along with the following depende
 Run the pipeline with your data directories:
 
 ```bash
-BT-CAP --input "C:\path\to\input" --output "C:\path\to\output" --samples 2 --seed 42 --normalize
+BT-CAP --input "C:\path\to\input" --output "C:\path\to\output" --samples 2 --seed 42 --workers 16 --normalize 
 ```
 
 - `--input`: Path to the directory containing input data (e.g., T1N, T1C, T2F, T2W, SEG images).
 - `--output`: Path to save augmented output data.
 - `--samples`: Number of augmented samples per case (default: 1).
 - `--seed`: Random seed setting for reproducibility (optional).
+- `--workers`: Number of parallel workers (default: CPU count) (optional).
 - `--normalize`: Apply Z-score normalization (optional).
+
 
 Check available options:
 

@@ -47,8 +47,6 @@ def apply_bspline_deformation(
     disp_scale=3.0,
     rng: np.random.Generator = None
 ):
-    if rng is None:
-        rng = np.random.default_rng()
     if grid_physical_spacing is None or random_displacement is None:
         grid_physical_spacing, random_displacement = compute_adaptive_params(mask_np, affine)
     sitk_vol = np_to_sitk(volume_np, affine)
